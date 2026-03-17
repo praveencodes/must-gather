@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Profiling wrapper for the oc CLI. When this script is first in PATH (as "oc"),
+# it times each invocation and appends a log line to OC_PROFILE_LOG.
+#
+# Usage: see hack/README-profiling.md
+
+REAL_OC="${OC_REAL_OC:-/usr/bin/oc}"
+PROFILE_LOG="${OC_PROFILE_LOG:-./oc-profile.log}"
+
+# Build full command line (single line, newlines replaced by space)
+cmd_line="oc $*"
+cmd_line="${cmd_line//$'\n'/ }"
+
+start_epoch=$(date +%s.%N)
+start_rfc=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%S")
+
+stderr_capture=""
+if [[ -n "$(which mktemp 2>/dev/null)" ]]; then
+	stderr_capture=$(mktemp) && trap 'rm -f "$stderr_capture"' EXIT
+fi
+if [[ -n "$stderr_capture" ]]; then
+	"$REAL_OC" "$@" 2>"$stderr_capture"
+else
+	"$REAL_OC" "$@"
+fi
+exit_code=$?
+
+# On failure, capture first line of stderr as reason (sanitized: no newlines, pipes, or tabs; max 200 chars)
+reason=""
+if [[ $exit_code -ne 0 ]] && [[ -n "$stderr_capture" ]] && [[ -s "$stderr_capture" ]]; then
+	reason=$(head -1 "$stderr_capture" 2>/dev/null | tr '\n\t|' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//' | cut -c1-200)
+fi
+
+end_epoch=$(date +%s.%N)
+end_rfc=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%S")
+duration=$(awk "BEGIN { printf \"%.2f\", $end_epoch - $start_epoch }" 2>/dev/null || echo "0")
+
+# Ensure log directory exists (for in-pod use when log is under /must-gather)
+mkdir -p "$(dirname "$PROFILE_LOG")" 2>/dev/null || true
+# Header on first write (pipe-separated for readability; command after tab so it can contain " | ")
+if [[ ! -s "$PROFILE_LOG" ]]; then
+	echo "START | END | DURATION(s) | EXIT | REASON | COMMAND" >>"$PROFILE_LOG"
+fi
+# One line per invocation: start | end | duration | exit_code | reason | full command
+printf "%s | %s | %8s | %s | %s\t%s\n" "$start_rfc" "$end_rfc" "$duration" "$exit_code" "$reason" "$cmd_line" >>"$PROFILE_LOG"
+
+exit $exit_code

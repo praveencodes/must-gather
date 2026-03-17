@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Must Gather Commands Analyzer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@patternfly/patternfly@5/patternfly.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    .upload-zone {
+      position: relative;
+      cursor: pointer;
+      min-height: 140px;
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      font-size: 0;
+      z-index: 1;
+    }
+    .upload-zone .pf-v5-c-card {
+      border: 2px dashed var(--pf-v5-global--BorderColor--200);
+      border-radius: 0;
+      min-height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s ease, background-color 0.2s ease, border-style 0.2s ease;
+    }
+    .upload-zone .pf-v5-c-card__body {
+      pointer-events: none;
+      text-align: center;
+      width: 100%;
+    }
+    .upload-zone:hover .pf-v5-c-card {
+      border-color: var(--pf-v5-global--primary-color--100);
+      background-color: var(--pf-v5-global--BackgroundColor--200);
+    }
+    .upload-zone.dragover .pf-v5-c-card {
+      border-color: var(--pf-v5-global--active-color--100);
+      border-style: solid;
+      background-color: var(--pf-v5-global--BackgroundColor--300);
+    }
+    /* Summary stat cards */
+    #summary .pf-v5-l-grid__item {
+      display: flex;
+    }
+    #summary .pf-v5-c-card {
+      flex: 1;
+      width: 100%;
+      border: 1px solid var(--pf-v5-global--BorderColor--200);
+      border-radius: 0;
+    }
+    #summary .pf-v5-c-card__body {
+      padding: var(--pf-v5-global--spacer--md) var(--pf-v5-global--spacer--lg);
+    }
+    #summary .pf-v5-c-content .pf-v5-c-content__text:first-child {
+      margin-bottom: var(--pf-v5-global--spacer--xs);
+    }
+    /* Chart cards */
+    .chart-wrap {
+      height: 100%;
+      min-height: 280px;
+      border: 1px solid var(--pf-v5-global--BorderColor--200);
+      border-radius: 0;
+    }
+    .chart-wrap .pf-v5-c-card__header {
+      padding-bottom: var(--pf-v5-global--spacer--sm);
+      border-bottom: 1px solid var(--pf-v5-global--BorderColor--200);
+    }
+    .chart-wrap .pf-v5-c-card__title {
+      font-size: var(--pf-v5-global--FontSize--md);
+      font-weight: var(--pf-v5-global--FontWeight--semi-bold);
+    }
+    .chart-wrap .pf-v5-c-card__body {
+      padding: var(--pf-v5-global--spacer--md);
+      min-height: 220px;
+    }
+    .chart-wrap canvas { max-height: 260px; width: 100% !important; }
+    /* Equal-height chart cards in grid */
+    .pf-v5-l-grid__item { display: flex; }
+    .pf-v5-l-grid__item .pf-v5-c-card.chart-wrap { flex: 1; min-width: 0; }
+    /* Profile table */
+    #table { width: 100%; }
+    #table .pf-v5-c-table__td[data-label="Start"] { white-space: nowrap; }
+    #table .pf-v5-c-table__td[data-label="Duration (s)"] { white-space: nowrap; }
+    #table .pf-v5-c-table__td[data-label="Reason"] { max-width: 24rem; }
+    #table .pf-v5-c-table__td[data-label="Command"] { max-width: none; }
+    #table .pf-v5-c-table__td[data-label="Copy"] { width: 3rem; text-align: center; vertical-align: middle; }
+    #table .pf-v5-c-table__td[data-label="Copy"] .copy-cmd-btn {
+      padding: 0.25rem;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 2px;
+      color: var(--pf-v5-global--Color--200);
+    }
+    #table .pf-v5-c-table__td[data-label="Copy"] .copy-cmd-btn:hover { color: var(--pf-v5-global--primary-color--100); background: var(--pf-v5-global--BackgroundColor--200); }
+    #table .pf-v5-c-table__td[data-label="Copy"] .copy-cmd-btn svg { width: 1rem; height: 1rem; display: block; }
+    /* Resizable columns */
+    #table { table-layout: fixed; min-width: 100%; }
+    #table .pf-v5-c-table__th { position: relative; padding-right: 1.25rem; }
+    #table .pf-v5-c-table__th .col-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+    }
+    #table .pf-v5-c-table__th .col-resize-handle:hover,
+    #table .pf-v5-c-table__th .col-resize-handle:active { background: var(--pf-v5-global--active-color--100); opacity: 0.3; }
+    .pf-v5-c-table__sort .sort-icon::after { margin-left: 0.25rem; }
+    .pf-v5-c-table__sort.sorted-asc .sort-icon::after { content: '\2191'; }
+    .pf-v5-c-table__sort.sorted-desc .sort-icon::after { content: '\2193'; }
+    .exit-0 { color: var(--pf-v5-global--success-color--100); }
+    .exit-1 { color: var(--pf-v5-global--danger-color--100); }
+    .hidden { display: none !important; }
+    /* Red Hat–style section spacing */
+    .profile-viewer-section { margin-bottom: var(--pf-v5-global--spacer--2xl, 2rem); }
+    .profile-viewer-section:last-child { margin-bottom: 0; }
+    .pf-v5-c-page__main-section { padding-bottom: var(--pf-v5-global--spacer--2xl, 2rem); }
+    /* Theme toggle: top right */
+    .theme-toggle-wrap {
+      position: fixed;
+      top: var(--pf-v5-global--spacer--md, 1rem);
+      right: var(--pf-v5-global--spacer--md, 1rem);
+      z-index: 1000;
+    }
+    .theme-toggle-wrap .pf-v5-c-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .theme-toggle-wrap .theme-toggle-icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="theme-toggle-wrap">
+    <button type="button" class="pf-v5-c-button pf-m-plain" id="themeToggle" aria-label="Switch to dark theme" title="Switch to dark theme">
+      <span class="theme-toggle-icon" aria-hidden="true">&#9728;</span>
+      <span class="theme-toggle-label">Light</span>
+    </button>
+  </div>
+  <div class="pf-v5-c-page">
+    <main class="pf-v5-c-page__main" id="main-content" tabindex="-1" role="main">
+      <section class="pf-v5-c-page__main-section pf-v5-c-page__main-section--padding">
+        <div class="pf-v5-c-content profile-viewer-section">
+          <h1 class="pf-v5-c-title pf-m-4xl">Must Gather Commands Analyzer</h1>
+        </div>
+
+        <div class="upload-zone profile-viewer-section" id="uploadZone">
+          <input type="file" id="fileInput" accept=".log,text/plain,*">
+          <div class="pf-v5-c-card">
+            <div class="pf-v5-c-card__body">
+              <p class="pf-v5-c-card__title">Drop <strong>oc-profile.log</strong> here or click to choose</p>
+              <p class="pf-v5-c-content pf-v5-u-mt-sm pf-v5-u-color-200">Pipe/tab format: start | end | duration | exit | reason → command (reason shown for failures)</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="content" class="hidden">
+          <div class="pf-v5-l-grid pf-m-gutter pf-m-all-4-col-on-lg pf-m-all-6-col-on-md pf-m-all-12-col-on-sm profile-viewer-section" id="summary"></div>
+
+          <div class="pf-v5-l-grid pf-m-gutter pf-m-all-6-col-on-md pf-m-all-12-col-on-sm profile-viewer-section">
+            <div class="pf-v5-l-grid__item pf-m-12-col">
+              <div class="pf-v5-c-card chart-wrap">
+                <div class="pf-v5-c-card__header">
+                  <h3 class="pf-v5-c-card__title">Duration over time</h3>
+                </div>
+                <div class="pf-v5-c-card__body">
+                  <canvas id="chartTime"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="pf-v5-l-grid__item pf-m-6-col">
+              <div class="pf-v5-c-card chart-wrap">
+                <div class="pf-v5-c-card__header">
+                  <h3 class="pf-v5-c-card__title">Top 15 commands by total duration (s)</h3>
+                </div>
+                <div class="pf-v5-c-card__body">
+                  <canvas id="chartTop"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="pf-v5-l-grid__item pf-m-6-col">
+              <div class="pf-v5-c-card chart-wrap">
+                <div class="pf-v5-c-card__header">
+                  <h3 class="pf-v5-c-card__title">Success vs failure</h3>
+                </div>
+                <div class="pf-v5-c-card__body">
+                  <canvas id="chartExit"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="pf-v5-l-grid__item pf-m-6-col">
+              <div class="pf-v5-c-card chart-wrap">
+                <div class="pf-v5-c-card__header">
+                  <h3 class="pf-v5-c-card__title">Duration distribution (s)</h3>
+                </div>
+                <div class="pf-v5-c-card__body">
+                  <canvas id="chartHisto"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-viewer-section">
+            <span class="pf-v5-c-form-control">
+              <input class="pf-v5-c-form-control__input" type="text" id="search" placeholder="Filter commands…" aria-label="Filter commands">
+            </span>
+          </div>
+
+          <div class="profile-viewer-section" style="overflow-x: auto;">
+            <table class="pf-v5-c-table pf-m-sticky-header" id="table" role="grid" aria-label="Profile commands">
+              <caption class="pf-v5-c-table__caption pf-v5-u-screen-reader">Profile commands: Start, Duration, Exit, Reason, Command, Copy</caption>
+              <colgroup>
+                <col id="col-0" style="width: 160px;">
+                <col id="col-1" style="width: 100px;">
+                <col id="col-2" style="width: 64px;">
+                <col id="col-3" style="width: 200px;">
+                <col id="col-4" style="width: 320px;">
+                <col id="col-5" style="width: 48px;">
+              </colgroup>
+              <thead class="pf-v5-c-table__thead">
+                <tr class="pf-v5-c-table__tr">
+                  <th class="pf-v5-c-table__th pf-v5-c-table__sort" data-column="0" scope="col">
+                    <button type="button" class="pf-v5-c-table__button">
+                      <span class="pf-v5-c-table__button-content">
+                        <span class="pf-v5-c-table__text">Start</span>
+                        <span class="pf-v5-c-table__sort-indicator sort-icon"></span>
+                      </span>
+                    </button>
+                    <span class="col-resize-handle" data-col="0" aria-hidden="true"></span>
+                  </th>
+                  <th class="pf-v5-c-table__th pf-v5-c-table__sort" data-column="1" scope="col">
+                    <button type="button" class="pf-v5-c-table__button">
+                      <span class="pf-v5-c-table__button-content">
+                        <span class="pf-v5-c-table__text">Duration (s)</span>
+                        <span class="pf-v5-c-table__sort-indicator sort-icon"></span>
+                      </span>
+                    </button>
+                    <span class="col-resize-handle" data-col="1" aria-hidden="true"></span>
+                  </th>
+                  <th class="pf-v5-c-table__th pf-v5-c-table__sort" data-column="2" scope="col">
+                    <button type="button" class="pf-v5-c-table__button">
+                      <span class="pf-v5-c-table__button-content">
+                        <span class="pf-v5-c-table__text">Exit</span>
+                        <span class="pf-v5-c-table__sort-indicator sort-icon"></span>
+                      </span>
+                    </button>
+                    <span class="col-resize-handle" data-col="2" aria-hidden="true"></span>
+                  </th>
+                  <th class="pf-v5-c-table__th pf-v5-c-table__sort" data-column="3" scope="col">
+                    <button type="button" class="pf-v5-c-table__button">
+                      <span class="pf-v5-c-table__button-content">
+                        <span class="pf-v5-c-table__text">Reason</span>
+                        <span class="pf-v5-c-table__sort-indicator sort-icon"></span>
+                      </span>
+                    </button>
+                    <span class="col-resize-handle" data-col="3" aria-hidden="true"></span>
+                  </th>
+                  <th class="pf-v5-c-table__th pf-v5-c-table__sort" data-column="4" scope="col">
+                    <button type="button" class="pf-v5-c-table__button">
+                      <span class="pf-v5-c-table__button-content">
+                        <span class="pf-v5-c-table__text">Command</span>
+                        <span class="pf-v5-c-table__sort-indicator sort-icon"></span>
+                      </span>
+                    </button>
+                    <span class="col-resize-handle" data-col="4" aria-hidden="true"></span>
+                  </th>
+                  <th class="pf-v5-c-table__th" scope="col"><span class="pf-v5-c-table__text">Copy</span></th>
+                </tr>
+              </thead>
+              <tbody class="pf-v5-c-table__tbody" id="tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function initTheme() {
+      var THEME_KEY = 'must-gather-analyzer-theme';
+      var root = document.documentElement;
+      var btn = document.getElementById('themeToggle');
+      var iconSpan = btn && btn.querySelector('.theme-toggle-icon');
+      var labelSpan = btn && btn.querySelector('.theme-toggle-label');
+
+      function applyTheme(dark) {
+        if (dark) {
+          root.classList.add('pf-v5-theme-dark');
+          if (iconSpan) iconSpan.textContent = '\u263E';
+          if (labelSpan) labelSpan.textContent = 'Dark';
+          btn.setAttribute('aria-label', 'Switch to light theme');
+          btn.setAttribute('title', 'Switch to light theme');
+        } else {
+          root.classList.remove('pf-v5-theme-dark');
+          if (iconSpan) iconSpan.textContent = '\u2600';
+          if (labelSpan) labelSpan.textContent = 'Light';
+          btn.setAttribute('aria-label', 'Switch to dark theme');
+          btn.setAttribute('title', 'Switch to dark theme');
+        }
+        try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (e) {}
+      }
+
+      var saved = null;
+      try { saved = localStorage.getItem(THEME_KEY); } catch (e) {}
+      var isDark = saved === 'dark' || (saved !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      applyTheme(isDark);
+
+      if (btn) btn.addEventListener('click', function () {
+        isDark = root.classList.contains('pf-v5-theme-dark');
+        applyTheme(!isDark);
+      });
+    })();
+
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const content = document.getElementById('content');
+    const summaryEl = document.getElementById('summary');
+    const tbody = document.getElementById('tbody');
+    const searchInput = document.getElementById('search');
+
+    let profileData = [];
+    let charts = {};
+    let sortColumn = 0;
+    let sortDir = 1;
+
+    document.getElementById('table').addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('.col-resize-handle')) return;
+      var th = e.target && e.target.closest ? e.target.closest('th.pf-v5-c-table__sort') : null;
+      if (!th) return;
+      var col = parseInt(th.getAttribute('data-column'), 10);
+      if (col === sortColumn) { sortDir = -sortDir; } else { sortColumn = col; sortDir = 1; }
+      document.querySelectorAll('#table th.pf-v5-c-table__sort').forEach(function (h) { h.classList.remove('sorted-asc', 'sorted-desc', 'pf-m-selected'); });
+      th.classList.add(sortDir === 1 ? 'sorted-asc' : 'sorted-desc', 'pf-m-selected');
+      th.setAttribute('aria-sort', sortDir === 1 ? 'ascending' : 'descending');
+      renderTable();
+    });
+
+    (function initColumnResize() {
+      var table = document.getElementById('table');
+      var MIN_COL_WIDTH = 40;
+      var resizing = false;
+      var colIndex = 0;
+      var startX = 0;
+      var startWidth = 0;
+
+      function onMouseMove(e) {
+        if (!resizing) return;
+        var col = document.getElementById('col-' + colIndex);
+        if (!col) return;
+        var dx = e.pageX - startX;
+        var w = Math.max(MIN_COL_WIDTH, startWidth + dx);
+        col.style.width = w + 'px';
+      }
+      function onMouseUp() {
+        if (!resizing) return;
+        resizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      }
+      table.addEventListener('mousedown', function (e) {
+        var handle = e.target && e.target.closest ? e.target.closest('.col-resize-handle') : null;
+        if (!handle) return;
+        e.preventDefault();
+        colIndex = parseInt(handle.getAttribute('data-col'), 10);
+        var col = document.getElementById('col-' + colIndex);
+        var th = table.querySelector('thead th[data-column="' + colIndex + '"]');
+        if (!col || !th) return;
+        startX = e.pageX;
+        startWidth = th.getBoundingClientRect().width;
+        resizing = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    })();
+
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', (e) => { e.preventDefault(); uploadZone.classList.remove('dragover'); });
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      uploadZone.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      const f = files[0];
+      const r = new FileReader();
+      r.onload = () => parseAndRender(r.result);
+      r.onerror = () => alert('Could not read file.');
+      r.readAsText(f);
+    });
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        parseAndRender(r.result);
+      };
+      r.readAsText(f);
+    });
+
+    function parseLine(line) {
+      const tabParts = line.split('\t');
+      var start, end, duration, exitCode, reason, command;
+      if (tabParts.length >= 2 && tabParts[0].indexOf(' | ') !== -1) {
+        var pipeParts = tabParts[0].split(' | ').map(function (s) { return s.trim(); });
+        if (pipeParts.length < 4) return null;
+        start = pipeParts[0];
+        end = pipeParts[1];
+        duration = parseFloat(pipeParts[2]);
+        exitCode = parseInt(pipeParts[3], 10);
+        reason = pipeParts.length >= 5 ? pipeParts[4] : '';
+        command = tabParts[1] || '';
+      } else if (tabParts.length >= 5) {
+        start = tabParts[0];
+        end = tabParts[1];
+        duration = parseFloat(tabParts[2]);
+        exitCode = parseInt(tabParts[3], 10);
+        reason = tabParts.length >= 6 ? tabParts[4] : '';
+        command = (tabParts.length >= 6 ? tabParts.slice(5) : tabParts.slice(4)).join('\t').trim();
+      } else {
+        return null;
+      }
+      return {
+        start: start,
+        end: end,
+        duration: isNaN(duration) ? 0 : duration,
+        exitCode: isNaN(exitCode) ? 0 : exitCode,
+        reason: reason || '',
+        command: command
+      };
+    }
+
+    function parseAndRender(text) {
+      profileData = text.split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .map(parseLine)
+        .filter(Boolean);
+      if (!profileData.length) {
+        alert('No valid rows found. Expected: start | end | duration | exit | reason → command (or tab-separated columns)');
+        return;
+      }
+      content.classList.remove('hidden');
+      renderSummary();
+      renderCharts();
+      renderTable();
+      searchInput.addEventListener('input', renderTable);
+    }
+
+    function formatTotalTime(seconds) {
+      if (seconds >= 3600) {
+        return { label: 'Total time (h)', value: (seconds / 3600).toFixed(2) + ' h' };
+      }
+      if (seconds >= 60) {
+        return { label: 'Total time (min)', value: (seconds / 60).toFixed(2) + ' min' };
+      }
+      return { label: 'Total time (s)', value: seconds.toFixed(1) + ' s' };
+    }
+
+    function renderSummary() {
+      const total = profileData.length;
+      const failed = profileData.filter(r => r.exitCode !== 0).length;
+      const totalDuration = profileData.reduce((s, r) => s + r.duration, 0);
+      const totalTimeFormatted = formatTotalTime(totalDuration);
+      const maxDuration = Math.max.apply(null, profileData.map(function (r) { return r.duration; }));
+      const start = profileData[0].start;
+      const end = profileData[profileData.length - 1].end;
+      summaryEl.innerHTML = `
+        <div class="pf-v5-l-grid__item"><div class="pf-v5-c-card"><div class="pf-v5-c-card__body"><div class="pf-v5-c-content"><p class="pf-v5-c-content__text pf-v5-u-font-size-sm pf-v5-u-color-200">Commands</p><p class="pf-v5-c-content__text pf-v5-u-font-size-xl pf-v5-u-font-weight-bold">${total}</p></div></div></div></div>
+        <div class="pf-v5-l-grid__item"><div class="pf-v5-c-card"><div class="pf-v5-c-card__body"><div class="pf-v5-c-content"><p class="pf-v5-c-content__text pf-v5-u-font-size-sm pf-v5-u-color-200">Failed</p><p class="pf-v5-c-content__text pf-v5-u-font-size-xl pf-v5-u-font-weight-bold exit-1">${failed}</p></div></div></div></div>
+        <div class="pf-v5-l-grid__item"><div class="pf-v5-c-card"><div class="pf-v5-c-card__body"><div class="pf-v5-c-content"><p class="pf-v5-c-content__text pf-v5-u-font-size-sm pf-v5-u-color-200">${totalTimeFormatted.label}</p><p class="pf-v5-c-content__text pf-v5-u-font-size-xl pf-v5-u-font-weight-bold">${totalTimeFormatted.value}</p></div></div></div></div>
+        <div class="pf-v5-l-grid__item"><div class="pf-v5-c-card"><div class="pf-v5-c-card__body"><div class="pf-v5-c-content"><p class="pf-v5-c-content__text pf-v5-u-font-size-sm pf-v5-u-color-200">Max duration (s)</p><p class="pf-v5-c-content__text pf-v5-u-font-size-xl pf-v5-u-font-weight-bold">${maxDuration.toFixed(2)}</p></div></div></div></div>
+        <div class="pf-v5-l-grid__item"><div class="pf-v5-c-card"><div class="pf-v5-c-card__body"><div class="pf-v5-c-content"><p class="pf-v5-c-content__text pf-v5-u-font-size-sm pf-v5-u-color-200">Time span</p><p class="pf-v5-c-content__text pf-v5-u-font-size-sm">${start} → ${end}</p></div></div></div></div>
+      `;
+    }
+
+    function renderCharts() {
+      Object.keys(charts).forEach(function (k) { if (charts[k]) charts[k].destroy(); });
+      charts = {};
+
+      function startEpoch(d) { return new Date(d.start).getTime(); }
+
+      // Duration over time (line)
+      const timeCtx = document.getElementById('chartTime').getContext('2d');
+      const sorted = profileData.slice().sort(function (a, b) { return startEpoch(a) - startEpoch(b); });
+      charts.time = new Chart(timeCtx, {
+        type: 'line',
+        data: {
+          labels: sorted.map(function (r) { return r.start; }),
+          datasets: [{
+            label: 'Duration (s)',
+            data: sorted.map(function (r) { return { x: r.start, y: r.duration }; }),
+            borderColor: '#58a6ff',
+            backgroundColor: 'rgba(88, 166, 255, 0.1)',
+            fill: true,
+            tension: 0.1,
+            pointRadius: 2,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'minute', displayFormats: { minute: 'HH:mm', second: 'HH:mm:ss' } },
+              grid: { color: '#2d3a4d' },
+              ticks: { color: '#8b949e', maxTicksLimit: 12 }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: '#2d3a4d' },
+              ticks: { color: '#8b949e' }
+            }
+          }
+        }
+      });
+
+      // Top commands by total duration
+      const byCmd = {};
+      profileData.forEach(function (r) {
+        var key = r.command.length > 70 ? r.command.slice(0, 70) + '\u2026' : r.command;
+        byCmd[key] = (byCmd[key] || 0) + r.duration;
+      });
+      var topEntries = Object.entries(byCmd).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 15);
+      const topCtx = document.getElementById('chartTop').getContext('2d');
+      charts.top = new Chart(topCtx, {
+        type: 'bar',
+        data: {
+          labels: topEntries.map(function (e) { return e[0]; }),
+          datasets: [{
+            label: 'Total duration (s)',
+            data: topEntries.map(function (e) { return e[1]; }),
+            backgroundColor: 'rgba(88, 166, 255, 0.7)',
+            borderColor: '#58a6ff',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { beginAtZero: true, grid: { color: '#2d3a4d' }, ticks: { color: '#8b949e' } },
+            y: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 0 } }
+          },
+        }
+      });
+
+      // Success vs failure
+      const success = profileData.filter(function (r) { return r.exitCode === 0; }).length;
+      const fail = profileData.length - success;
+      const exitCtx = document.getElementById('chartExit').getContext('2d');
+      charts.exit = new Chart(exitCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Success (0)', 'Failure (1)'],
+          datasets: [{
+            data: [success, fail],
+            backgroundColor: ['#3fb950', '#f85149'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { position: 'bottom', labels: { color: '#8b949e' } } }
+        }
+      });
+
+      // Duration histogram
+      const bins = [0, 0.5, 1, 2, 5, 10, 20, 50, 100, Infinity];
+      var histo = bins.slice(0, -1).map(function (lo, i) {
+        var hi = bins[i + 1];
+        var count = profileData.filter(function (r) { return r.duration >= lo && r.duration < hi; }).length;
+        var label = hi === Infinity ? (lo + '+') : (lo + '-' + hi);
+        return { label: label, count: count };
+      });
+      const histoCtx = document.getElementById('chartHisto').getContext('2d');
+      charts.histo = new Chart(histoCtx, {
+        type: 'bar',
+        data: {
+          labels: histo.map(function (h) { return h.label; }),
+          datasets: [{
+            label: 'Count',
+            data: histo.map(function (h) { return h.count; }),
+            backgroundColor: 'rgba(88, 166, 255, 0.6)',
+            borderColor: '#58a6ff',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#8b949e' } },
+            y: { beginAtZero: true, grid: { color: '#2d3a4d' }, ticks: { color: '#8b949e' } }
+          }
+        }
+      });
+    }
+
+    function renderTable() {
+      var q = (searchInput.value || '').toLowerCase();
+      var rows = profileData.filter(function (r) { return !q || r.command.toLowerCase().includes(q) || (r.reason && r.reason.toLowerCase().includes(q)); });
+      var cmp = function (a, b) {
+        var va, vb;
+        if (sortColumn === 0) { va = a.start; vb = b.start; return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir; }
+        if (sortColumn === 1) { va = a.duration; vb = b.duration; return (va - vb) * sortDir; }
+        if (sortColumn === 2) { va = a.exitCode; vb = b.exitCode; return (va - vb) * sortDir; }
+        if (sortColumn === 3) { va = (a.reason || ''); vb = (b.reason || ''); return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir; }
+        va = (a.command || ''); vb = (b.command || ''); return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+      };
+      rows.sort(cmp);
+      var headers = document.querySelectorAll('#table th.pf-v5-c-table__sort');
+      headers.forEach(function (h) {
+        h.classList.remove('sorted-asc', 'sorted-desc', 'pf-m-selected');
+        h.removeAttribute('aria-sort');
+        if (parseInt(h.getAttribute('data-column'), 10) === sortColumn) {
+          h.classList.add(sortDir === 1 ? 'sorted-asc' : 'sorted-desc', 'pf-m-selected');
+          h.setAttribute('aria-sort', sortDir === 1 ? 'ascending' : 'descending');
+        }
+      });
+      function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+      var copyIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v7a2 2 0 0 0 2 2h7a1 1 0 0 0 1-1v-1H3a1 1 0 0 1-1-1V5z"/></svg>';
+      tbody.innerHTML = rows.map(function (r) {
+        var reasonContent = r.reason ? ('<span class="pf-v5-c-table__text pf-m-truncate" title="' + esc(r.reason) + '">' + esc(r.reason) + '</span>') : '';
+        var reasonCell = '<td class="pf-v5-c-table__td pf-m-truncate exit-' + r.exitCode + '" data-label="Reason">' + reasonContent + '</td>';
+        var cmdCell = '<td class="pf-v5-c-table__td pf-m-truncate" data-label="Command"><span class="pf-v5-c-table__text pf-m-truncate" title="' + esc(r.command) + '">' + esc(r.command) + '</span></td>';
+        var copyCell = '<td class="pf-v5-c-table__td" data-label="Copy"><button type="button" class="copy-cmd-btn" data-command="' + esc(r.command) + '" aria-label="Copy command" title="Copy command">' + copyIconSvg + '</button></td>';
+        return '<tr class="pf-v5-c-table__tr">' +
+          '<td class="pf-v5-c-table__td" data-label="Start"><span class="pf-v5-c-table__text">' + esc(r.start) + '</span></td>' +
+          '<td class="pf-v5-c-table__td" data-label="Duration (s)"><span class="pf-v5-c-table__text">' + r.duration.toFixed(2) + '</span></td>' +
+          '<td class="pf-v5-c-table__td exit-' + r.exitCode + '" data-label="Exit"><span class="pf-v5-c-table__text">' + r.exitCode + '</span></td>' +
+          reasonCell +
+          cmdCell +
+          copyCell + '</tr>';
+      }).join('');
+    }
+
+    tbody.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('.copy-cmd-btn') : null;
+      if (!btn) return;
+      var cmd = btn.getAttribute('data-command');
+      if (cmd == null) return;
+      navigator.clipboard.writeText(cmd).then(function () {
+        var origTitle = btn.getAttribute('title');
+        btn.setAttribute('title', 'Copied!');
+        setTimeout(function () { btn.setAttribute('title', origTitle); }, 1500);
+      }).catch(function () {});
+    });
+  </script>
+</body>
+</html>

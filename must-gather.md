@@ -214,8 +214,8 @@ currently organized.
 │       └── storageclasses
 ├── host_service_logs
 │   └── masters
-│       ├── crio_service.log
-│       └── kubelet_service.log
+│       ├── crio_service.log.gz
+│       └── kubelet_service.log.gz
 └── namespaces
     ├── <NAMESPACE>
     │   ├── <API_GROUP_NAME>
